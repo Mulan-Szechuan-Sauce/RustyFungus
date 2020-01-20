@@ -11,7 +11,7 @@ enum Token {
     Left,
     Random,
     PrintInt,
-    Int(u32),
+    Int(u8),
 }
 
 struct Program {
@@ -20,12 +20,35 @@ struct Program {
     grid: Vec<Vec<Token>>,
 }
 
+// TODO: Bold the current point, perhaps?
+
+impl fmt::Display for Program {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let result = self.grid.iter()
+            .map(|line| line.iter()
+                 .map(|token| match token {
+                     Token::Noop       => ' ',
+                     Token::Up         => '^',
+                     Token::Down       => 'v',
+                     Token::Right      => '>',
+                     Token::Left       => '<',
+                     Token::Random     => '?',
+                     Token::PrintInt   => '.',
+                     Token::Int(value) => (value + ('0' as u8) - 1) as char,
+                 })
+                 .collect::<String>())
+            .fold(String::new(), |res, line| format!("{}\n{}", res, line));
+
+        write!(f, "{}", result)
+    }
+}
+
 fn set_token(program: &mut Program, x: usize, y: usize, token: Token) {
     // FIXME: Make the width dynamic too!
     let width = 128;
 
     // Expand the height to allow inserting at coordinate y
-    for i in (program.grid.len())..=y {
+    for _ in (program.grid.len())..=y {
         let new_row = vec![Token::Noop; width];
         program.grid.push(new_row);
     }
@@ -57,14 +80,13 @@ fn load_program(filename: String) -> Program {
                 '<' => Token::Left,
                 '?' => Token::Random,
                 '.' => Token::PrintInt,
-                '0'..='9' => Token::Int(c.to_digit(10).unwrap()),
+                '0'..='9' => Token::Int(c.to_digit(10).unwrap() as u8),
                 _ => panic!("Invalid character found"),
             };
 
             set_token(&mut program, x, y, token);
             x += 1;
         }
-        println!("");
 
         y += 1;
     }
@@ -81,6 +103,8 @@ fn step_program(program: & Program) -> bool {
 }
 
 fn run_program(program: Program) {
+    println!("Program: \n{}", program);
+
     while step_program(&program) {
     }
 }
