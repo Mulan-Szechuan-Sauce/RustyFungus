@@ -42,6 +42,7 @@ struct Program {
     yptr: usize,
     direction: Direction,
     grid: Vec<Vec<Token>>,
+    stack: Vec<i32>,
 }
 
 // TODO: Bold the current point, perhaps?
@@ -99,6 +100,7 @@ fn load_program(filename: String) -> Program {
         yptr: 0,
         direction: Direction::Right,
         grid: vec![],
+        stack: vec![],
     };
 
     let mut y = 0;
@@ -140,9 +142,21 @@ fn step_program(program: &mut Program) -> bool {
         Token::Right      => program.direction = Direction::Right,
         Token::Left       => program.direction = Direction::Left,
         Token::Random     => program.direction = rand::random(),
-        // FIXME:
-        Token::PrintInt => {},
-        Token::Int(_)   => {},
+        Token::Int(value) => program.stack.push(value as i32),
+        Token::PrintInt   => match program.stack.pop() {
+            Some(value) => print!("{} ", value),
+            None => {
+                println!("Hit bottom of stack");
+                return false;
+            },
+        },
+    }
+
+    match program.direction {
+        Direction::Up    => program.yptr -= 1,
+        Direction::Down  => program.yptr += 1,
+        Direction::Left  => program.xptr -= 1,
+        Direction::Right => program.xptr += 1,
     }
 
     return true;
