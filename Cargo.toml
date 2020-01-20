@@ -1,0 +1,8 @@
+[package]
+name = "rusty_fungus"
+version = "0.1.0"
+authors = ["Elijah Mirecki", "Joshua Wolfe"]
+edition = "2018"
+
+[dependencies]
+rand = "0.7.*"
