@@ -153,10 +153,34 @@ fn step_program(program: &mut Program) -> bool {
     }
 
     match program.direction {
-        Direction::Up    => program.yptr -= 1,
-        Direction::Down  => program.yptr += 1,
-        Direction::Left  => program.xptr -= 1,
-        Direction::Right => program.xptr += 1,
+        Direction::Up => {
+            if program.yptr == 0 {
+                program.yptr = program.grid.len();
+            } else {
+                program.yptr -= 1;
+            }
+        },
+        Direction::Down => {
+            if program.yptr == program.grid.len() - 1 {
+                program.yptr = 0;
+            } else {
+                program.yptr += 1;
+            }
+        },
+        Direction::Left => {
+            if program.xptr == 0 {
+                program.xptr = program.grid[program.yptr].len() - 1;
+            } else {
+                program.xptr -= 1;
+            }
+        },
+        Direction::Right => {
+            if program.xptr == program.grid[program.yptr].len() - 1 {
+                program.xptr = 0;
+            } else {
+                program.xptr += 1;
+            }
+        },
     }
 
     return true;
