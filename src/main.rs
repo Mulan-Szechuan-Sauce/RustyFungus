@@ -1,6 +1,7 @@
 use std::env;
-use std::fs;
 use std::fmt;
+use std::fs;
+use std::io;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -113,18 +114,16 @@ fn lines_to_token_matrix(lines: std::str::Lines) -> Vec<Vec<Token>> {
     }).collect()
 }
 
-fn load_program(filename: String) -> Program {
-    // TODO: Figure out how to clean this up
-    let file_contents = fs::read_to_string(filename)
-        .expect("Couldn't read file");
+fn load_program(filename: String) -> Result<Program, io::Error> {
+    let contents = fs::read_to_string(filename)?;
 
-    return Program {
+    return Ok(Program {
         xptr: 0,
         yptr: 0,
         direction: Direction::Right,
-        grid: lines_to_token_matrix(file_contents.lines()),
+        grid: lines_to_token_matrix(contents.lines()),
         stack: vec![],
-    };
+    });
 }
 
 /**
@@ -193,8 +192,11 @@ fn main() {
     match args.get(1) {
         Some(raw_filename) => {
             let filename = raw_filename.to_string();
-            let program = load_program(filename);
-            run_program(program);
+
+            match load_program(filename) {
+                Ok(program) => run_program(program),
+                Err(e) => exit_with_message(&e.to_string()),
+            }
         },
         _ => exit_with_message("Usage: rustyfunges <filename>"),
     }
