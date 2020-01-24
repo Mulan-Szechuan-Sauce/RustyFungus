@@ -6,6 +6,11 @@ use rand::{
     Rng,
 };
 
+fn exit_with_message(message: &str) {
+    eprintln!("{}", message);
+    std::process::exit(1);
+}
+
 #[derive(Copy, Clone)]
 enum Token {
     Noop,
@@ -69,13 +74,14 @@ impl fmt::Display for Program {
 }
 
 fn set_token(program: &mut Program, x: usize, y: usize, token: Token) {
-    // FIXME: Make the width dynamic too!
-    let width = 128;
-
     // Expand the height to allow inserting at coordinate y
-    for _ in (program.grid.len())..=y {
-        let new_row = vec![Token::Noop; width];
-        program.grid.push(new_row);
+    for _ in program.grid.len()..=y {
+        program.grid.push(vec![]);
+    }
+
+    // Expand row with no-ops to make room for the new token
+    for _ in program.grid[y].len()..=x {
+        program.grid[y].push(Token::Noop);
     }
 
     program.grid[y][x] = token;
@@ -91,44 +97,34 @@ fn get_token(program: &Program, x: usize, y: usize) -> Token {
     }
 }
 
+fn lines_to_token_matrix(lines: std::str::Lines) -> Vec<Vec<Token>> {
+    lines.map(|line| {
+        line.chars().map(|c| match c {
+            ' ' => Token::Noop,
+            '^' => Token::Up,
+            'v' => Token::Down,
+            '>' => Token::Right,
+            '<' => Token::Left,
+            '?' => Token::Random,
+            '.' => Token::PrintInt,
+            '0'..='9' => Token::Int(c.to_digit(10).unwrap() as u8),
+            _ => panic!("Invalid character found"),
+        }).collect()
+    }).collect()
+}
+
 fn load_program(filename: String) -> Program {
+    // TODO: Figure out how to clean this up
     let file_contents = fs::read_to_string(filename)
         .expect("Couldn't read file");
 
-    let mut program = Program {
+    return Program {
         xptr: 0,
         yptr: 0,
         direction: Direction::Right,
-        grid: vec![],
+        grid: lines_to_token_matrix(file_contents.lines()),
         stack: vec![],
     };
-
-    let mut y = 0;
-
-    for line in file_contents.lines() {
-        let mut x = 0;
-
-        for c in line.chars() {
-            let token = match c {
-                ' ' => Token::Noop,
-                '^' => Token::Up,
-                'v' => Token::Down,
-                '>' => Token::Right,
-                '<' => Token::Left,
-                '?' => Token::Random,
-                '.' => Token::PrintInt,
-                '0'..='9' => Token::Int(c.to_digit(10).unwrap() as u8),
-                _ => panic!("Invalid character found"),
-            };
-
-            set_token(&mut program, x, y, token);
-            x += 1;
-        }
-
-        y += 1;
-    }
-
-    return program;
 }
 
 /**
@@ -186,21 +182,20 @@ fn step_program(program: &mut Program) -> bool {
     return true;
 }
 
-fn run_program(mut program: &mut Program) {
-    println!("Program: \n{}", &program);
-
+fn run_program(mut program: Program) {
     while step_program(&mut program) {
     }
 }
 
 fn main() {
-    let args: Vec<_> = env::args().collect();
+    let args: Vec<String> = env::args().collect();
 
-    if args.len() == 2 {
-        let filename = args.get(1).unwrap().to_string();
-        let mut program = load_program(filename);
-        run_program(&mut program);
-    } else {
-        panic!("Usage: rustyfunges <filename>")
+    match args.get(1) {
+        Some(raw_filename) => {
+            let filename = raw_filename.to_string();
+            let program = load_program(filename);
+            run_program(program);
+        },
+        _ => exit_with_message("Usage: rustyfunges <filename>"),
     }
 }
