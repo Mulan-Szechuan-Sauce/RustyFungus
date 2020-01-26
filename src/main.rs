@@ -49,6 +49,7 @@ struct Program {
     direction: Direction,
     grid: Vec<Vec<Token>>,
     stack: Vec<i32>,
+    is_running: bool,
 }
 
 // TODO: Bold the current point, perhaps?
@@ -94,6 +95,7 @@ fn get_token(program: &Program, x: usize, y: usize) -> Token {
             Some(token) => token.clone(),
             None => Token::Noop,
         },
+        // Default to Noop to give the illusion of an infinite grid
         None => Token::Noop,
     }
 }
@@ -123,6 +125,7 @@ fn load_program(filename: String) -> Result<Program, io::Error> {
         direction: Direction::Right,
         grid: lines_to_token_matrix(contents.lines()),
         stack: vec![],
+        is_running: true,
     });
 }
 
@@ -154,11 +157,8 @@ fn move_program_pointer(program: &mut Program) {
     };
 }
 
-/**
- * Returns false when the program should end
- */
-fn step_program(mut program: &mut Program) -> bool {
-    match get_token(program, program.xptr, program.yptr) {
+fn perform_action(program: &mut Program, action: Token) {
+    match action {
         Token::Noop       => {}, // Do nothing
         Token::Up         => program.direction = Direction::Up,
         Token::Down       => program.direction = Direction::Down,
@@ -170,18 +170,21 @@ fn step_program(mut program: &mut Program) -> bool {
             Some(value) => print!("{} ", value),
             None => {
                 println!("Hit bottom of stack");
-                return false;
+                program.is_running = false;
             },
         },
-    }
+    };
+}
 
+fn step_program(mut program: &mut Program) {
+    let current_token = get_token(program, program.xptr, program.yptr);
+    perform_action(program, current_token);
     move_program_pointer(&mut program);
-
-    return true;
 }
 
 fn run_program(mut program: Program) {
-    while step_program(&mut program) {
+    while program.is_running {
+        step_program(&mut program);
     }
 }
 
