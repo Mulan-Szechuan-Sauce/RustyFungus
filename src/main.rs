@@ -126,10 +126,38 @@ fn load_program(filename: String) -> Result<Program, io::Error> {
     });
 }
 
+fn increment_wrap(value: usize, max_value: usize) -> usize {
+    if value == max_value - 1 {
+        0
+    } else {
+        value + 1
+    }
+}
+
+fn decrement_wrap(value: usize, max_value: usize) -> usize {
+    if value == 0 {
+        max_value - 1
+    } else {
+        value - 1
+    }
+}
+
+fn move_program_pointer(program: &mut Program) {
+    let max_y = program.grid.len();
+    let max_x = program.grid[program.yptr].len();
+
+    match program.direction {
+        Direction::Up    => program.yptr = decrement_wrap(program.yptr, max_y),
+        Direction::Down  => program.yptr = increment_wrap(program.yptr, max_y),
+        Direction::Left  => program.xptr = decrement_wrap(program.xptr, max_x),
+        Direction::Right => program.xptr = increment_wrap(program.xptr, max_x),
+    };
+}
+
 /**
  * Returns false when the program should end
  */
-fn step_program(program: &mut Program) -> bool {
+fn step_program(mut program: &mut Program) -> bool {
     match get_token(program, program.xptr, program.yptr) {
         Token::Noop       => {}, // Do nothing
         Token::Up         => program.direction = Direction::Up,
@@ -147,36 +175,7 @@ fn step_program(program: &mut Program) -> bool {
         },
     }
 
-    match program.direction {
-        Direction::Up => {
-            if program.yptr == 0 {
-                program.yptr = program.grid.len();
-            } else {
-                program.yptr -= 1;
-            }
-        },
-        Direction::Down => {
-            if program.yptr == program.grid.len() - 1 {
-                program.yptr = 0;
-            } else {
-                program.yptr += 1;
-            }
-        },
-        Direction::Left => {
-            if program.xptr == 0 {
-                program.xptr = program.grid[program.yptr].len() - 1;
-            } else {
-                program.xptr -= 1;
-            }
-        },
-        Direction::Right => {
-            if program.xptr == program.grid[program.yptr].len() - 1 {
-                program.xptr = 0;
-            } else {
-                program.xptr += 1;
-            }
-        },
-    }
+    move_program_pointer(&mut program);
 
     return true;
 }
