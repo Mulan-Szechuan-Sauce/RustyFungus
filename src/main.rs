@@ -2,6 +2,7 @@ use std::env;
 use std::fmt;
 use std::fs;
 use std::io;
+use std::char;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -15,12 +16,18 @@ fn exit_with_message(message: &str) {
 #[derive(Copy, Clone)]
 enum Token {
     Noop,
+    Quit,
     Up,
     Down,
     Right,
     Left,
     Random,
     PrintInt,
+    PrintChar,
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
     Int(u8),
 }
 
@@ -52,6 +59,21 @@ struct Program {
     is_running: bool,
 }
 
+impl Program {
+    fn stack_pop(&mut self) -> i32 {
+        match self.stack.pop() {
+            Some(value) => value,
+            None        => 0
+        }
+    }
+
+    fn binary_stack_op<F>(&mut self, op: F) where F: Fn(i32, i32) -> i32 {
+        let a = self.stack_pop();
+        let b = self.stack_pop();
+        self.stack.push(op(a, b))
+    }
+}
+
 // TODO: Bold the current point, perhaps?
 
 impl fmt::Display for Program {
@@ -60,13 +82,19 @@ impl fmt::Display for Program {
             .map(|line| line.iter()
                  .map(|token| match token {
                      Token::Noop       => ' ',
+                     Token::Quit       => '@',
                      Token::Up         => '^',
                      Token::Down       => 'v',
                      Token::Right      => '>',
                      Token::Left       => '<',
                      Token::Random     => '?',
                      Token::PrintInt   => '.',
-                     Token::Int(value) => (value + ('0' as u8) - 1) as char,
+                     Token::PrintChar  => ',',
+                     Token::Int(value) => (value + ('0' as u8)) as char,
+                     Token::Add        => '+',
+                     Token::Subtract   => '-',
+                     Token::Multiply   => '*',
+                     Token::Divide     => '/',
                  })
                  .collect::<String>())
             .fold(String::new(), |res, line| format!("{}\n{}", res, line));
@@ -104,12 +132,18 @@ fn lines_to_token_matrix(lines: std::str::Lines) -> Vec<Vec<Token>> {
     lines.map(|line| {
         line.chars().map(|c| match c {
             ' ' => Token::Noop,
+            '@' => Token::Quit,
             '^' => Token::Up,
             'v' => Token::Down,
             '>' => Token::Right,
             '<' => Token::Left,
             '?' => Token::Random,
             '.' => Token::PrintInt,
+            ',' => Token::PrintChar,
+            '+' => Token::Add,
+            '-' => Token::Subtract,
+            '*' => Token::Multiply,
+            '/' => Token::Divide,
             '0'..='9' => Token::Int(c.to_digit(10).unwrap() as u8),
             _ => panic!("Invalid character found"),
         }).collect()
@@ -157,22 +191,27 @@ fn move_program_pointer(program: &mut Program) {
     };
 }
 
+fn i32_to_char(value: i32) -> char {
+    char::from_u32(value as u32).unwrap()
+}
+
+
 fn perform_action(program: &mut Program, action: Token) {
     match action {
         Token::Noop       => {}, // Do nothing
+        Token::Quit       => program.is_running = false,
         Token::Up         => program.direction = Direction::Up,
         Token::Down       => program.direction = Direction::Down,
         Token::Right      => program.direction = Direction::Right,
         Token::Left       => program.direction = Direction::Left,
         Token::Random     => program.direction = rand::random(),
         Token::Int(value) => program.stack.push(value as i32),
-        Token::PrintInt   => match program.stack.pop() {
-            Some(value) => print!("{} ", value),
-            None => {
-                println!("Hit bottom of stack");
-                program.is_running = false;
-            },
-        },
+        Token::PrintInt   => print!("{} ", program.stack_pop()),
+        Token::PrintChar  => print!("{}", i32_to_char(program.stack_pop())),
+        Token::Add        => program.binary_stack_op(|a, b| a + b),
+        Token::Subtract   => program.binary_stack_op(|a, b| b - a),
+        Token::Multiply   => program.binary_stack_op(|a, b| a * b),
+        Token::Divide     => program.binary_stack_op(|a, b| b / a),
     };
 }
 
@@ -182,7 +221,7 @@ fn step_program(mut program: &mut Program) {
     move_program_pointer(&mut program);
 }
 
-fn run_program(mut program: Program) {
+fn run_program(mut program: &mut Program) {
     while program.is_running {
         step_program(&mut program);
     }
@@ -196,7 +235,7 @@ fn main() {
             let filename = raw_filename.to_string();
 
             match load_program(filename) {
-                Ok(program) => run_program(program),
+                Ok(mut program) => run_program(&mut program),
                 Err(e) => exit_with_message(&e.to_string()),
             }
         },
