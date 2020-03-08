@@ -33,6 +33,7 @@ pub struct Program {
     is_running: bool,
     string_mode: bool,
     width: i32,
+    last_output: String,
 }
 
 impl Program {
@@ -51,6 +52,7 @@ impl Program {
             is_running: true,
             string_mode: false,
             width: max_width,
+            last_output: String::new(),
         }
     }
 
@@ -78,15 +80,17 @@ impl Program {
         self.stack.push(op(a, b))
     }
 
-    fn height(&self) -> i32 {
+    pub fn height(&self) -> i32 {
         self.grid.len() as i32
     }
 
-    fn width(&self) -> i32 {
+    pub fn width(&self) -> i32 {
         self.width
     }
 
     pub fn step(&mut self) {
+        self.last_output = String::new();
+
         let current_token = self.get_token(self.xptr, self.yptr).unwrap();
         if self.string_mode {
             self.perform_string_action(current_token);
@@ -191,8 +195,8 @@ impl Program {
                 self.stack_push(bottom);
             },
             Token::Discard      => { self.stack_pop(); },
-            Token::PrintInt     => print!("{} ", self.stack_pop()),
-            Token::PrintChar    => print!("{}", i32_to_char(self.stack_pop())),
+            Token::PrintInt     => self.last_output = format!("{} ", self.stack_pop()),
+            Token::PrintChar    => self.last_output = format!("{}", i32_to_char(self.stack_pop())),
             Token::Bridge       => self.move_program_pointer(),
             Token::Get          => {
                 let y = self.stack_pop();
@@ -226,16 +230,32 @@ impl Program {
     pub fn is_running(&self) -> bool {
         self.is_running
     }
+
+    pub fn get_last_output(&self) -> String {
+        self.last_output.clone()
+    }
+
+    pub fn xptr(&self) -> i32 {
+        self.xptr
+    }
+
+    pub fn yptr(&self) -> i32 {
+        self.yptr
+    }
+
+    pub fn get_stack(&self) -> &Vec<i32> {
+        &self.stack
+    }
 }
 
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let result = self.grid.iter()
+        let program_str = self.grid.iter()
             .map(|line| line.iter()
                  .map(token_to_char)
                  .collect::<String>())
             .fold(String::new(), |res, line| format!("{}\n{}", res, line));
 
-        write!(f, "{}", result)
+        write!(f, "{}", program_str)
     }
 }
