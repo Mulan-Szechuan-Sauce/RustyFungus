@@ -35,9 +35,15 @@ enum Token {
     HorizontalIf,
     VerticalIf,
     StringMode,
-
+    Duplicate,
+    Swap,
+    Discard,
     PrintInt,
     PrintChar,
+    Bridge,
+    Get,
+    Put,
+
     Quit,
     Int(u8),
     Noop,
@@ -61,8 +67,14 @@ lazy_static! {
         ('_', Token::HorizontalIf),
         ('|', Token::VerticalIf),
         ('"', Token::StringMode),
+        (':', Token::Duplicate),
+        ('\\',Token::Swap),
+        ('$', Token::Discard),
         ('.', Token::PrintInt),
         (',', Token::PrintChar),
+        ('#', Token::Bridge),
+        ('g', Token::Get),
+        ('p', Token::Put),
         ('@', Token::Quit),
         (' ', Token::Noop),
     ]);
@@ -88,13 +100,14 @@ impl Distribution<Direction> for Standard {
 }
 
 struct Program {
-    xptr: usize,
-    yptr: usize,
+    xptr: i32,
+    yptr: i32,
     direction: Direction,
     grid: Vec<Vec<Token>>,
     stack: Vec<i32>,
     is_running: bool,
     string_mode: bool,
+    _width: i32,
 }
 
 impl Program {
@@ -109,24 +122,53 @@ impl Program {
         self.stack.push(value);
     }
 
+    fn stack_peek(&self) -> i32 {
+        match self.stack.last() {
+            Some(value) => *value,
+            None        => 0,
+        }
+    }
+
     fn binary_stack_op_push<F>(&mut self, op: F) where F: Fn(i32, i32) -> i32 {
         let a = self.stack_pop();
         let b = self.stack_pop();
         self.stack.push(op(a, b))
     }
+
+    fn height(&self) -> i32 {
+        self.grid.len() as i32
+    }
+
+    fn width(&self) -> i32 {
+        self._width
+    }
 }
 
 // TODO: Bold the current point, perhaps?
+
+fn token_to_char(token: &Token) -> char {
+    match token {
+        Token::Int(value)   => (value + ('0' as u8)) as char,
+        Token::Char(value)  => *value,
+        value               => *CHAR_TOKEN_MAP.get_by_right(&value).unwrap(),
+    }
+}
+
+fn char_to_token(character: char) -> Token {
+    match character {
+        '0'..='9' => Token::Int(character.to_digit(10).unwrap() as u8),
+        value     => match CHAR_TOKEN_MAP.get_by_left(&value) {
+            Some(c) => *c,
+            None    => Token::Char(value),
+        }
+    }
+}
 
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let result = self.grid.iter()
             .map(|line| line.iter()
-                 .map(|token| match token {
-                     Token::Int(value)   => (value + ('0' as u8)) as char,
-                     Token::Char(value)  => *value,
-                     value               => *CHAR_TOKEN_MAP.get_by_right(&value).unwrap(),
-                 })
+                 .map(token_to_char)
                  .collect::<String>())
             .fold(String::new(), |res, line| format!("{}\n{}", res, line));
 
@@ -134,7 +176,18 @@ impl fmt::Display for Program {
     }
 }
 
-fn set_token(program: &mut Program, x: usize, y: usize, token: Token) {
+fn set_token(program: &mut Program, x: i32, y: i32, token: Token) {
+    if x < 0 || y < 0  { // TODO: Be fancy and add rows/columns to the top/left
+        panic!("Tried setting a negative value on the grid");
+    }
+
+    if x > program.width() {
+        program._width = x;
+    }
+
+    let x = x as usize;
+    let y = y as usize;
+
     // Expand the height to allow inserting at coordinate y
     for _ in program.grid.len()..=y {
         program.grid.push(vec![]);
@@ -148,44 +201,52 @@ fn set_token(program: &mut Program, x: usize, y: usize, token: Token) {
     program.grid[y][x] = token;
 }
 
-fn get_token(program: &Program, x: usize, y: usize) -> Token {
-    match program.grid.get(y) {
+fn get_token(program: &Program, x: i32, y: i32) -> Option<Token> {
+    if x < 0 || y < 0 || x >= program.width() || y >= program.height() {
+        return None;
+    }
+
+    let x = x as usize;
+    let y = y as usize;
+
+    Some(match program.grid.get(y) {
         Some(row) => match row.get(x) {
             Some(token) => token.clone(),
             None => Token::Noop,
         },
-        // Default to Noop to give the illusion of an infinite grid
+        // Default to Noop to give the illusion of a grid
         None => Token::Noop,
-    }
+    })
 }
 
 fn lines_to_token_matrix(lines: std::str::Lines) -> Vec<Vec<Token>> {
     lines.map(|line| {
-        line.chars().map(|c| match c {
-            '0'..='9' => Token::Int(c.to_digit(10).unwrap() as u8),
-            value     => match CHAR_TOKEN_MAP.get_by_left(&value) {
-                Some(c) => *c,
-                None    => Token::Char(value),
-            }
-        }).collect()
+        line.chars().map(|c| char_to_token(c)).collect()
     }).collect()
 }
 
 fn load_program(filename: String) -> Result<Program, io::Error> {
     let contents = fs::read_to_string(filename)?;
 
+    let parsed_contents = lines_to_token_matrix(contents.lines());
+    let max_width = parsed_contents.iter()
+        .map(|line| line.len())
+        .max()
+        .unwrap_or(0) as i32;
+
     return Ok(Program {
         xptr: 0,
         yptr: 0,
         direction: Direction::Right,
-        grid: lines_to_token_matrix(contents.lines()),
+        grid: parsed_contents,
         stack: vec![],
         is_running: true,
-        string_mode: false
+        string_mode: false,
+        _width: max_width,
     });
 }
 
-fn increment_wrap(value: usize, max_value: usize) -> usize {
+fn increment_wrap(value: i32, max_value: i32) -> i32 {
     if value == max_value - 1 {
         0
     } else {
@@ -193,7 +254,7 @@ fn increment_wrap(value: usize, max_value: usize) -> usize {
     }
 }
 
-fn decrement_wrap(value: usize, max_value: usize) -> usize {
+fn decrement_wrap(value: i32, max_value: i32) -> i32 {
     if value == 0 {
         max_value - 1
     } else {
@@ -202,8 +263,8 @@ fn decrement_wrap(value: usize, max_value: usize) -> usize {
 }
 
 fn move_program_pointer(program: &mut Program) {
-    let max_y = program.grid.len();
-    let max_x = program.grid[program.yptr].len();
+    let max_y = program.grid.len() as i32;
+    let max_x = program.grid[program.yptr as usize].len() as i32;
 
     match program.direction {
         Direction::Up    => program.yptr = decrement_wrap(program.yptr, max_y),
@@ -250,8 +311,31 @@ fn perform_action(program: &mut Program, action: Token) {
             }
         },
         Token::StringMode   => program.string_mode = true,
+        Token::Duplicate    => program.stack_push(program.stack_peek()),
+        Token::Swap         => {
+            let top = program.stack_pop();
+            let bottom = program.stack_pop();
+            program.stack_push(top);
+            program.stack_push(bottom);
+        },
+        Token::Discard      => { program.stack_pop(); },
         Token::PrintInt     => print!("{} ", program.stack_pop()),
         Token::PrintChar    => print!("{}", i32_to_char(program.stack_pop())),
+        Token::Bridge       => move_program_pointer(program),
+        Token::Get          => {
+            let y = program.stack_pop();
+            let x = program.stack_pop();
+            program.stack_push(match get_token(program, x, y) {
+                Some(token) => token_to_char(&token) as i32,
+                None        => 0,
+            });
+        },
+        Token::Put          => {
+            let y = program.stack_pop();
+            let x = program.stack_pop();
+            let v = program.stack_pop();
+            set_token(program, x, y, char_to_token(i32_to_char(v)));
+        },
         Token::Quit         => program.is_running = false,
         Token::Int(value)   => program.stack.push(value as i32),
         Token::Noop         => {}, // Do nothing
@@ -268,7 +352,7 @@ fn perform_string_action(program: &mut Program, action: Token) {
 }
 
 fn step_program(mut program: &mut Program) {
-    let current_token = get_token(program, program.xptr, program.yptr);
+    let current_token = get_token(program, program.xptr, program.yptr).unwrap();
     if program.string_mode {
         perform_string_action(program, current_token);
     } else {
