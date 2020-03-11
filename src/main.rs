@@ -38,16 +38,31 @@ fn run_program(program: &mut Program) {
     }
 }
 
-fn debug_program(program: &mut Program) {
-    let mut cumulative_output = String::new();
+struct DebugMSWindows {
+    output_window: *mut i8,
+    output_border_window: *mut i8,
+    program_window: *mut i8,
+    stack_window: *mut i8,
+    last_output: String,
+    cumulative_output: String,
+}
 
-    initscr();
-    curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
+impl DebugMSWindows {
+    fn new() -> DebugMSWindows {
+        let mut windows = DebugMSWindows {
+            program_window: std::ptr::null_mut(),
+            output_border_window: std::ptr::null_mut(),
+            output_window: std::ptr::null_mut(),
+            stack_window: std::ptr::null_mut(),
+            last_output: String::new(),
+            cumulative_output: String::new(),
+        };
 
-    while program.is_running() {
-        clear();
-        refresh();
+        windows._compute_window_geometry();
+        windows
+    }
 
+    fn _compute_window_geometry(&mut self) {
         let mut max_x = 0;
         let mut max_y = 0;
         getmaxyx(stdscr(), &mut max_y, &mut max_x);
@@ -56,100 +71,109 @@ fn debug_program(program: &mut Program) {
         let border_bottom = ((max_y as f32) * 0.8) as i32;
         let border_right  = max_x - right_pane_width;
 
-        let last_output = program.get_last_output();
-        cumulative_output += &last_output;
+        self.program_window = newwin(border_bottom, border_right, 0, 0);
+        self.output_border_window = newwin(max_y - border_bottom, max_x, border_bottom, 0);
+        self.output_window = newwin(max_y - border_bottom - 4, max_x - 2, border_bottom + 3, 1);
+        self.stack_window = newwin(border_bottom, right_pane_width, 0, max_x - right_pane_width);
+    }
 
-        let program_window = newwin(border_bottom, border_right, 0, 0);
+    fn render_stack_window(&mut self, program: &Program) {
+        wclear(self.stack_window);
+        mvwaddstr(self.stack_window, 1, 1, "Stack:");
 
+        for (index, element) in program.get_stack().iter().rev().enumerate() {
+            mvwaddstr(self.stack_window, (2 + index) as i32, 1, &format!("{}", element));
+        }
+
+        box_(self.stack_window, 0, 0);
+        wrefresh(self.stack_window);
+    }
+
+    fn render_program_window(&mut self, program: &Program) {
         for (y, line) in format!("{}", program).split("\n").enumerate() {
             let y = y as i32;
 
             if y - 1 == program.yptr() {
                 for (x, c) in line.to_string().chars().enumerate() {
-                    let x = (x as i32);
+                    let x = x as i32;
 
                     if x == program.xptr() {
-                        wattron(program_window, A_REVERSE());
+                        wattron(self.program_window, A_REVERSE());
                     }
 
-                    mvwaddch(program_window, y, x + 1, c as u32);
+                    mvwaddch(self.program_window, y, x + 1, c as u32);
 
                     if x == program.xptr() {
-                        wattroff(program_window, A_REVERSE());
+                        wattroff(self.program_window, A_REVERSE());
                     }
                 }
             } else {
-                mvwaddstr(program_window, y, 1, line);
+                mvwaddstr(self.program_window, y, 1, line);
             }
         }
 
-        box_(program_window, 0, 0);
-        wrefresh(program_window);
-        
-        let output_window_border = newwin(max_y - border_bottom, max_x, border_bottom, 0);
-        let output_window = newwin(max_y - border_bottom - 4, max_x - 2, border_bottom + 3, 1);
-        scrollok(output_window, true);
+        box_(self.program_window, 0, 0);
+        wrefresh(self.program_window);
+    }
 
-        mvwaddstr(output_window_border, 1, 1, &format!("Last Output: {}", last_output));
-        mvwaddstr(output_window_border, 2, 1, "Cumulative Output:");
-        mvwaddstr(output_window, 0, 0, &format!("{}", cumulative_output));
+    fn _render_cumulative_output(&mut self) {
+        mvwaddstr(self.output_window, 0, 0, &self.cumulative_output);
+        wrefresh(self.output_window);
+    }
 
-        box_(output_window_border, 0, 0);
-        wrefresh(output_window_border);
-        wrefresh(output_window);
+    fn render_output_window(&mut self) {
+        scrollok(self.output_window, true);
 
+        mvwaddstr(self.output_border_window, 1, 1, &format!("Last Output: {}", self.last_output));
+        mvwaddstr(self.output_border_window, 2, 1, "Cumulative Output:");
 
-        let stack_window = newwin(border_bottom, right_pane_width, 0, max_x - right_pane_width);
+        box_(self.output_border_window, 0, 0);
+        wrefresh(self.output_border_window);
 
-        mvwaddstr(stack_window, 1, 1, "Stack:");
+        self._render_cumulative_output();
+    }
 
-        for (index, element) in program.get_stack().iter().rev().enumerate() {
-            mvwaddstr(stack_window, (2 + index) as i32, 1, &format!("{}", element));
-        }
+    fn render_ended_program_window(&mut self) {
+        box_(self.output_border_window, 0, 0);
+        mvwaddstr(self.output_border_window, 1, 1, &format!("{:<80}", "Program has ended"));
+        wrefresh(self.output_border_window);
 
-        box_(stack_window, 0, 0);
-        wrefresh(stack_window);
+        self._render_cumulative_output();
+    }
+
+    fn log_output(&mut self, output: String) {
+        self.last_output = output;
+        self.cumulative_output += &self.last_output;
+    }
+
+    fn render(&mut self, program: &Program) {
+        self.render_program_window(program);
+        self.render_output_window();
+        self.render_stack_window(program);
+    }
+}
+
+fn debug_program(program: &mut Program) {
+    initscr();
+    curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
+
+    let mut windows = DebugMSWindows::new();
+
+    while program.is_running() {
+        clear();
+        refresh();
+
+        windows.log_output(program.get_last_output());
+        windows.render(program);
 
         program.step();
         getch();
     }
 
-    addstr("\nProgram has ended\n");
+    windows.render_ended_program_window();
     getch();
     endwin();
 }
-
-/*
-|                                                                                                |          |
-|                                                                                                |          |
-|                                                                                                |          |
-|                                                                                                |          |
-|                                                                                                |          |
-|                                                                                                |          |
-|                                                                                                |          |
-|                                                                                                |          |
-|                                                                                                |          |
-|                                                                                                |          |
-|                                                                                                |          |
-|                                                                                                |          |
-|                                                                                                |          |
-|                                                                                                |          |
-|                                                                                                |          |
-|                                                                                                |          |
-|                                                                                                |          |
-|                                                                                                |          |
-|                                                                                                |          |
-|                                                                                                |          |
-|-----------------------------------------------------------------------------------------------------------|
-|Last output: a                                                                                             |
-|Output:                                                                                                    |
-|                                                                                                           |
-|                                                                                                           |
-|                                                                                                           |
-|                                                                                                           |
-|                                                                                                           |
-|                                                                                                           |
-*/
 
 fn main() {
     let matches = App::new("Rusty Fungus")
