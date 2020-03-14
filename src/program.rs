@@ -4,6 +4,7 @@ use crate::direction::Direction;
 use std::fmt;
 use std::char;
 use std::io;
+use ncurses::{wgetch, mvwgetch, getch, wmove, wrefresh, mvwaddstr, box_, newwin, stdscr, getmaxyx};
 
 pub trait InputReader {
     fn read_char(&mut self) -> i32;
@@ -13,6 +14,10 @@ pub trait InputReader {
 pub struct StdinInputReader {
     buffered_line: String,
     buffered_index: usize,
+}
+
+pub struct NcursesInputReader {
+    input_window: *mut i8,
 }
 
 impl StdinInputReader {
@@ -34,6 +39,70 @@ impl StdinInputReader {
                 Err(_) => self.buffered_line = String::new(),
             };
         }
+    }
+}
+
+impl NcursesInputReader {
+    pub fn new() -> NcursesInputReader {
+        NcursesInputReader {
+            input_window: std::ptr::null_mut(),
+        }
+    }
+
+    fn _init_input_popup(&mut self) {
+        let mut max_x = 0;
+        let mut max_y = 0;
+        getmaxyx(stdscr(), &mut max_y, &mut max_x);
+        let center_x = max_x / 2;
+        let center_y = max_y / 2;
+        let input_width = 40;
+        let input_height = 6;
+
+        self.input_window = newwin(
+            input_height, input_width,
+            center_y - input_height / 2, center_x - input_width / 2);
+    }
+
+    fn _render_input_popup(&mut self, input_type: String) {
+        self._init_input_popup();
+
+        box_(self.input_window, 0, 0);
+        mvwaddstr(self.input_window, 2, 8, &format!("Please input a {}", input_type));
+        wrefresh(self.input_window);
+    }
+}
+
+impl InputReader for NcursesInputReader {
+    fn read_char(&mut self) -> i32 {
+        self._render_input_popup("character".to_string());
+        mvwgetch(self.input_window, 3, 9)
+    }
+
+    fn read_int(&mut self) -> i32 {
+        self._render_input_popup("integer".to_string());
+
+        let mut number = 0;
+        let mut c = mvwgetch(self.input_window, 3, 9);
+
+        let negative_multiplier = if c == ('-' as i32) {
+            c = wgetch(self.input_window);
+            -1
+        } else {
+            1
+        };
+
+        loop {
+            if (c > 57) || (c < 48) {
+                break;
+            }
+            
+            number *= 10;
+            number += (c - 48);
+
+            c = wgetch(self.input_window);
+        }
+
+        negative_multiplier * number
     }
 }
 
@@ -228,7 +297,18 @@ impl Program {
             Token::Add          => self.binary_stack_op_push(|a, b| a + b),
             Token::Subtract     => self.binary_stack_op_push(|a, b| b - a),
             Token::Multiply     => self.binary_stack_op_push(|a, b| a * b),
-            Token::Divide       => self.binary_stack_op_push(|a, b| b / a),
+            Token::Divide       => {
+                let a = self.stack_pop();
+                let b = self.stack_pop();
+
+                self.stack.push(
+                    if a == 0 {
+                        self.input_reader.read_int()
+                    } else {
+                        b / a
+                    }
+                );
+            },
             Token::Modulo       => self.binary_stack_op_push(|a, b| b % a),
             Token::Not          => {
                 let stack_val = self.stack_pop();

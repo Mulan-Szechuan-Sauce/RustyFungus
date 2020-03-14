@@ -3,7 +3,7 @@ mod token;
 mod program;
 
 use token::{Token, char_to_token};
-use program::{Program, StdinInputReader};
+use program::{Program, StdinInputReader, NcursesInputReader};
 
 #[macro_use]
 extern crate lazy_static;
@@ -28,7 +28,7 @@ fn lines_to_token_matrix(lines: std::str::Lines) -> Vec<Vec<Token>> {
 fn load_program(filename: String) -> Result<Program, io::Error> {
     let contents = fs::read_to_string(filename)?;
     let parsed_contents = lines_to_token_matrix(contents.lines());
-    Ok(Program::new(parsed_contents, Box::new(StdinInputReader::new())))
+    Ok(Program::new(parsed_contents, Box::new(NcursesInputReader::new())))
 }
 
 fn run_program(program: &mut Program) {
@@ -75,6 +75,7 @@ impl DebugMSWindows {
         self.output_border_window = newwin(max_y - border_bottom, max_x, border_bottom, 0);
         self.output_window = newwin(max_y - border_bottom - 4, max_x - 2, border_bottom + 3, 1);
         self.stack_window = newwin(border_bottom, right_pane_width, 0, max_x - right_pane_width);
+
     }
 
     fn render_stack_window(&mut self, program: &Program) {
@@ -167,11 +168,11 @@ fn debug_program(program: &mut Program) {
         windows.render(program);
 
         program.step();
-        getch();
+        noecho();
     }
 
     windows.render_ended_program_window();
-    getch();
+    noecho();
     endwin();
 }
 
