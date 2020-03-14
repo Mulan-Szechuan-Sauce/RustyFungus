@@ -26,7 +26,8 @@ pub enum Token {
     Bridge,
     Get,
     Put,
-
+    ReadInt,
+    ReadChar,
     Quit,
     Int(u8),
     Noop,
@@ -58,6 +59,8 @@ lazy_static! {
         ('#', Token::Bridge),
         ('g', Token::Get),
         ('p', Token::Put),
+        ('&', Token::ReadInt),
+        ('~', Token::ReadChar),
         ('@', Token::Quit),
         (' ', Token::Noop),
     ]);

@@ -3,7 +3,7 @@ mod token;
 mod program;
 
 use token::{Token, char_to_token};
-use program::Program;
+use program::{Program, StdinInputReader};
 
 #[macro_use]
 extern crate lazy_static;
@@ -28,7 +28,7 @@ fn lines_to_token_matrix(lines: std::str::Lines) -> Vec<Vec<Token>> {
 fn load_program(filename: String) -> Result<Program, io::Error> {
     let contents = fs::read_to_string(filename)?;
     let parsed_contents = lines_to_token_matrix(contents.lines());
-    Ok(Program::new(parsed_contents))
+    Ok(Program::new(parsed_contents, Box::new(StdinInputReader::new())))
 }
 
 fn run_program(program: &mut Program) {

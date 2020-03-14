@@ -3,6 +3,72 @@ use crate::direction::Direction;
 
 use std::fmt;
 use std::char;
+use std::io;
+
+pub trait InputReader {
+    fn read_char(&mut self) -> i32;
+    fn read_int(&mut self) -> i32;
+}
+
+pub struct StdinInputReader {
+    buffered_line: String,
+    buffered_index: usize,
+}
+
+impl StdinInputReader {
+    pub fn new() -> StdinInputReader {
+        StdinInputReader {
+            buffered_line: String::new(),
+            buffered_index: 0,
+        }
+    }
+
+    fn _read_buffered_line_if_empty(&mut self) {
+        if self.buffered_index >= self.buffered_line.len() {
+            self.buffered_index = 0;
+
+            let stdin = io::stdin();
+
+            match stdin.read_line(&mut self.buffered_line) {
+                Ok(_)  => {},
+                Err(_) => self.buffered_line = String::new(),
+            };
+        }
+    }
+}
+
+fn read_int_from_string(s: &String, offset: usize) -> String {
+    s.chars()
+        .enumerate()
+        .skip(offset)
+        .take_while(|(index, c)| c.is_digit(10) || (*c == '-' && *index == offset))
+        .map(|(_, c)| c)
+        .collect::<String>()
+}
+
+impl InputReader for StdinInputReader {
+    fn read_char(&mut self) -> i32 {
+        self._read_buffered_line_if_empty();
+        let maybe_char = self.buffered_line.chars().nth(self.buffered_index);
+        self.buffered_index += 1;
+
+        match maybe_char {
+            Some(c) => c as i32,
+            None    => 0,
+        }
+    }
+
+    fn read_int(&mut self) -> i32 {
+        self._read_buffered_line_if_empty();
+        let str_int = read_int_from_string(&self.buffered_line, self.buffered_index);
+        self.buffered_index += str_int.len() + 1;
+
+        match str_int.parse::<i32>() {
+            Ok(value) => value,
+            Err(_)    => 0,
+        }
+    }
+}
 
 fn i32_to_char(value: i32) -> char {
     char::from_u32(value as u32).unwrap()
@@ -34,10 +100,11 @@ pub struct Program {
     string_mode: bool,
     width: i32,
     last_output: String,
+    input_reader: Box<dyn InputReader>,
 }
 
 impl Program {
-    pub fn new(parsed_contents: Vec<Vec<Token>>) -> Program {
+    pub fn new(parsed_contents: Vec<Vec<Token>>, input_reader: Box<dyn InputReader>) -> Program {
         let max_width = parsed_contents.iter()
             .map(|line| line.len())
             .max()
@@ -53,6 +120,7 @@ impl Program {
             string_mode: false,
             width: max_width,
             last_output: String::new(),
+            input_reader: input_reader,
         }
     }
 
@@ -211,6 +279,14 @@ impl Program {
                 let x = self.stack_pop();
                 let v = self.stack_pop();
                 self.set_token(x, y, char_to_token(i32_to_char(v)));
+            },
+            Token::ReadInt      => {
+                let int = self.input_reader.read_int();
+                self.stack_push(int);
+            },
+            Token::ReadChar     => {
+                let character = self.input_reader.read_char();
+                self.stack_push(character);
             },
             Token::Quit         => self.is_running = false,
             Token::Int(value)   => self.stack.push(value as i32),
